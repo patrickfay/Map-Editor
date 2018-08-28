@@ -1,0 +1,812 @@
+<html>
+<head>
+    <link rel="stylesheet" href="https://openlayers.org/en/v4.6.4/css/ol.css" type="text/css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    <script src="https://cdn.polyfill.io/v2/polyfill.min.js?features=requestAnimationFrame,Element.prototype.classList,URL"></script>
+    <script src="https://openlayers.org/en/v4.6.4/build/ol.js"></script>
+    <link rel="stylesheet" type="text/css" href="css/style.css">
+
+    <title>Map Editor</title>
+</head>
+<body>
+    <!-- Div containing Map, Editor, and Buttons -->
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <h1 id="title"><center>Map Editor</center></h1> 
+        </div>
+
+        <div class="panel-body">
+            <div id="map" class="map"></div>
+
+            <div id="editor" class="editor">
+                <br>
+                <div id="eContents" class="edContents">
+                    <div class="form-group" style="width:95%; margin-left:auto; margin-right:auto;">
+                        <div class="form-group">
+                            Select a Color:
+                            <input type="color" id="colorSelect" value="#ffffff"></input>
+                        </div>
+                        <div class="form-inline">
+                            Transparency:
+                            <input type="range" class="form-control no-border" min="0" max="100" value="0" id="transSlider">
+                            <span id="transVal">0%</span>
+                        </div>
+                        <div class="form-inline">
+                            Scale: 
+                            <input type="range" class="form-control no-border" min="-100" max="100" value="0" id="scaleSlider">
+                        </div>
+                        <div class="form-inline">
+                            Rotation: 
+                            <input type="range" class="form-control no-border" min="0" max="360" value="0" id="rotationSlider">
+                            <span id="rotationVal">0&deg;</span>
+                        </div>
+                        
+                        <div class="form-inline">
+                            Enter a Label: 
+                            <input type="text" class="form-control input-sm" id="labelInput"></input>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="buttons">
+                <button id="selectButton">
+                    <img src="https://cdn4.iconfinder.com/data/icons/multisizeicon-edition/512/baru-02-512.png" height="20">
+                </button>
+                <button id="rectangleButton">
+                    <img src="https://cdn2.iconfinder.com/data/icons/apple-inspire-white/100/Apple-94-512.png" height="20">
+                </button>
+                <button id="deleteButton">
+                    <img src="https://cdn.iconscout.com/public/images/icon/free/png-512/bin-delete-remove-trash-3311da396c8607c4-512x512.png" height="20">
+                </button>
+                <button id="saveButton">
+                    <img src="https://png.icons8.com/metro/1600/save.png" height="20">
+                </button>
+    
+                <label for="fileUpload" id="fileUploadLabel">
+                    <img src="http://simpleicon.com/wp-content/uploads/folder-upload-2.png" height="20">
+                </label>
+                <input type="file" name="photo" id="fileUpload" />
+                <span id="downloadLink"></span>
+            </div>
+        </div> <!-- End Panel Body -->
+    </div> <!-- End Panel Div -->
+
+    <!-- Modal (popup) saving the current state of the map -->
+    <div id="savePopup" class="modal fade" role="dialog">
+        <div id="saveFormDiv" class="modal-dialog modal-sm">
+            <div class="modal-content">
+    
+                <!-- Header Section of Modal -->
+                <div class="modal-header">
+                    <a class="close" data-dismiss="modal">&times;</a>
+                    <center><h4 class="modal-title" id="popUpTitle">Save As File</h4></center>
+                </div>
+
+                <!-- Body section of Modal -->
+                <div class="modal-body">
+                    <div class="form-group">
+                        <input class="form-control" type="text" id="fileName" placeholder="ex.JSON">
+                    </div>
+                </div>
+
+                <!-- Footer Section of Modal -->
+                <div class="modal-footer">
+                    <input type="button" value="Save" class="btn btn-primary" data-dismiss="modal" onclick="saveFeatures()"></input>
+                    <input type="button" value="Cancel" class="btn btn-danger" data-dismiss="modal" onclick="closeModal()"></input>
+                </div>
+
+            </div>  <!-- End Modal Content -->
+        </div>      <!-- End Modal Div -->
+    </div>          <!-- End Modal Container Div -->
+
+    <script>
+        /*
+         TODO - 
+         1) Make sure when user clicks on rect when in rect drawing mode shape doesn't get added to selectable rects
+        */
+
+        /* Start Global Vars */
+        var select = new ol.interaction.Select({
+            condition: ol.events.condition.singleClick,
+            toggleCondition: ol.events.condition.singleClick
+        });
+
+        var translate = new ol.interaction.Translate({
+            features: select.getFeatures()
+        });
+
+        //map centered on Gettysburg (best position for scope of battle)
+        var map = new ol.Map({
+            interactions: ol.interaction.defaults({
+                //disable user's ability to zoom (aid ability to maintain image size on map)
+                shiftDragZoom: false,
+                doubleClickZoom: false,
+                altShiftDragRotate: false
+            }).extend([select, translate]),
+            layers: [
+                //add labels of towns and others to map
+                new ol.layer.Tile({
+                    source: new ol.source.Stamen({
+                        layer: 'terrain-labels'
+                    })
+                }),
+                //add terrain type background to map
+                new ol.layer.Tile({
+                    source: new ol.source.Stamen({
+                        layer: 'terrain'
+                    })
+                })
+            ],
+            target: 'map',
+            view: new ol.View({
+                center: ol.proj.fromLonLat([-74.211688, 40.805606]),
+                zoom: 9.5  //use for test data
+            })
+        });
+
+        //Array that stores layers currently on map
+        var layerArray = [];
+
+        //Array that stores a polygon feature and its associated transparent polygon feature that contains text
+        //These 2 different shapes will be stored as one element as an array, with a length of 2, within shapeAndTextArray
+        var shapeAndTextArray = [];
+
+        //used to update rotation of feature properly (w/o this rotation occurs too quickly)
+        var lastRadian = undefined;
+
+        //used to update scale of feature properly
+        var lastScale = 0;
+
+        //defined globally so it can be removed later
+        var mapInteractions = [];
+        var draw;
+        var drawRect = new ol.interaction.DragBox();
+
+        //create layer for rectangles so all rectangles drawn are on same layer instead of creating new layer for each rect
+        var shapeSource = new ol.source.Vector();
+        var shapeLayer = new ol.layer.Vector({
+            source: shapeSource
+        });
+
+        const selectButton = document.querySelector('#selectButton');
+        var prevClicked = selectButton;    /* Most previously clicked html button element */
+        /* End Global Vars */
+
+        map.addLayer(shapeLayer);
+        layerArray.push(shapeLayer);
+
+        /*
+         * Convert all features into JSON object and write them to a downloadable file.
+         */
+        function saveFeatures(){
+            //array to hold all feature's JSON objects
+            const allFeats = [];
+
+            //Iterate through all features and create JSON obj obtaining feature's data
+            shapeAndTextArray.forEach(shapeTextObj => {
+                const mainFeat = shapeTextObj[0];
+                const labelFeat = shapeTextObj[1];
+                const featObj = {
+                    fGeom: mainFeat.getGeometry().getCoordinates(),
+                    fCol: mainFeat.getStyle().getFill().getColor(),
+                    lGeom: labelFeat.getGeometry().getCoordinates(),
+                    lLabel: labelFeat.getStyle().getText().getText()
+                };
+                allFeats.push(featObj);
+            });
+            writeToFile(allFeats);
+        }
+
+        /*
+         * Returns a valid filename for the user to download.
+         * str: A string value of the name entered by the user for the filename
+         * Returns a string of a valid filename
+         */
+        function checkValidInput(str){
+            if(str.length == 0){
+                return 'map';
+            }else if(str.toUpperCase().endsWith(".JSON")){
+                return str.substring(0, str.length - 5);
+            }
+            return str;
+        }
+
+        /*
+         * Take JSON obj featuresObj and write it a file that the user can then download.
+         */
+        function writeToFile(featJSONArray){
+            const parts = [
+                new Blob([JSON.stringify(featJSONArray)], {type: 'text/plain'}),
+                new Uint16Array([33])
+            ];
+
+            const fileName = checkValidInput(document.querySelector('#fileName').value);
+            
+            const file = new File(parts, fileName + '.JSON', {
+                lastModified: new Date(0),
+                type: "overide/mimetype"
+            });
+
+            const fr = new FileReader();
+
+            fr.onload = function(evt){
+                document.querySelector('#downloadLink').innerHTML = "<br><a href=" + URL.createObjectURL(file) + " download=" + file.name + ">Download " + file.name + "</a><br>"
+            }
+            fr.readAsText(file);
+        }
+
+        /*
+         * Reads in a JSON file containing saved shapes and displays them by calling addUpLoadedFeats().
+         */
+        function readFile(evt){
+            const files = evt.target.files;
+            const file = files[0];           
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                //event.target.result contains the JSON object in the file
+                addUploadedFeats(event.target.result)         
+            }
+            reader.readAsText(file)
+        }
+
+        /*
+         * Add uploaded JSON objects depicting features to the map.
+         * objStr: string representation of JSON object read from uploaded file 
+         */
+        function addUploadedFeats(objStr){
+            //uploaded file ends in a "!", so get rid of it
+            objStr = objStr.substring(0, objStr.length - 2);
+            dataArray = JSON.parse(objStr);
+
+            const vectorSource = new ol.source.Vector({/* Empty Vector */});
+
+            //add main feature and label feature to the map
+            dataArray.forEach(obj => {
+                const mainFeat = new ol.Feature({
+                    geometry: new ol.geom.Polygon(obj.fGeom)
+                });
+
+                const mainStyle = new ol.style.Style({
+                    fill: new ol.style.Fill({
+                        color: obj.fCol
+                    }),
+                    stroke: new ol.style.Stroke({
+                        color: "rgba(0, 0, 0, 0)"
+                    })
+                });
+
+                mainFeat.setStyle(mainStyle);
+
+                const labelFeat = new ol.Feature({
+                    geometry: new ol.geom.Polygon(obj.lGeom)
+                });
+
+                const labelStyle = new ol.style.Style({
+                    fill: new ol.style.Fill({
+                        color: "rgba(255,255,255,0)"
+                    }),
+                    stroke: new ol.style.Stroke({
+                        color: "rgba(0, 0, 0, 0)"
+                    }),
+                    text: new ol.style.Text({
+                        offsetY: 8,
+                        font: 'bold 15px Arial',
+                        fill: new ol.style.Fill({
+                            color: '#000000'
+                        }),
+                        text: obj.lLabel
+                    })
+                });
+
+                labelFeat.setStyle(labelStyle);
+
+                //add the 2 paired features to vectorSource
+                shapeSource.addFeature(mainFeat);
+                shapeSource.addFeature(labelFeat);
+
+                //add 2 features to shapeAndTextArray
+                shapeAndTextArray.push([mainFeat, labelFeat]);
+            });
+        }
+
+        /*
+         * Plot points of rectangle dragged by user over the map (CAN ALSO DO ALOT WITH OTHER ATTRIBUTES OF POLYGON).
+         * rectPoints: an array of lat/lon points depicting 4 corners of rectangle to be drawn on map
+         * rectSource: an ol.source.Vector that the features will be added to
+         */
+        function plotRect(rectPoints, rectSource){
+            const rectFeature = new ol.Feature({
+                geometry: new ol.geom.Polygon(rectPoints)
+            });
+
+            const rectColor = new ol.style.Style({
+                fill: new ol.style.Fill({
+                    color: "rgba(255,255,255,0.9)"
+                }),
+                //stroke is initial completely transparent (so it is not a null value)
+                //done for later alteration
+                stroke: new ol.style.Stroke({
+                    color: "rgba(0, 0, 0, 0)"
+                })
+            });
+            rectFeature.setStyle(rectColor);
+
+            //add newPoint to vector
+            rectSource.addFeature(rectFeature);
+
+            //take lowest lat/lon points from rectPoints and create new rectangle just below rectPoints to set label
+            const labelFeature = new ol.Feature({
+                geometry: new ol.geom.Polygon(getLabelFeatCoords(rectPoints[0]))
+            });
+
+            const labelStyle = new ol.style.Style({
+                //make completely transparent
+                fill: new ol.style.Fill({
+                    color: "rgba(255,255,255,0)"
+                }),
+                stroke: new ol.style.Stroke({
+                    color: "rgba(0, 0, 0, 0)"
+                }),
+                text: new ol.style.Text({
+                    offsetY: 8,
+                    font: 'bold 15px Arial',
+                    fill: new ol.style.Fill({
+                        color: '#000000'
+                    }),
+                    text: ""
+                })
+            });
+            labelFeature.setStyle(labelStyle);
+
+            rectSource.addFeature(labelFeature);
+
+            //add 2 different features to shapeAndTextArray
+            shapeAndTextArray.push([rectFeature, labelFeature]);
+        }
+
+        /*
+         * Find most southern Points of an array of geographical points from a rectangle and return points for a rectangle below it.
+         * pointsArray: an array containing the lat/lon points of a rectangle feature
+         *
+         * Returns array containing geographical points for a rectangle to be placed just below rectangle in pointsArray
+         */
+        function getLabelFeatCoords(pointsArray){               
+            //set lowestPoint to the most southern geographic point
+            var lowestPoint = pointsArray[0][1];
+
+            pointsArray.forEach(coord => {
+                let temp = coord[1];
+                if(temp < lowestPoint){
+                    lowestPoint = temp;
+                }
+            });
+
+            //add lowest geographic points and 2 new points to create a rectangle
+            const newRectPoints = [[]];
+            const topPoints = [];
+            const bottomPoints = [];
+
+            pointsArray.forEach(coord => {
+                if(coord[1] == lowestPoint){
+                    topPoints.push([coord[0] , coord[1]]);
+                    bottomPoints.push([coord[0], coord[1] - 4000]);
+                }
+            });
+
+            //add points to array in the right order (to make rectangle shpae, not 2 triangles)
+            topPoints.forEach(coord => newRectPoints[0].push(coord));
+
+            for(var i = 0; i < topPoints.length; i++){
+                newRectPoints[0].push(bottomPoints[topPoints.length - 1 - i]);
+            }
+            
+            newRectPoints[0].push(newRectPoints[0][0]);
+
+            return newRectPoints;
+        }
+
+        /*
+         * Add an interaction to the map that the user specifies. Default is none.
+         * val: A string of the interaction to be added to the map
+         */
+        function addInteraction(val) {
+            if (val == 'polygon') {
+                draw = new ol.interaction.Draw({
+                    source: source,
+                    type: 'Polygon',                        
+                    freehand: false
+                });
+                map.addInteraction(draw);
+                mapInteractions.push(draw);
+            }else if(val == 'rectangle'){
+                map.addInteraction(drawRect);
+                mapInteractions.push(drawRect);
+            }
+        }
+
+        /*
+         * Remove all interactions from the map.
+         */
+        function removeMapInteractions(){
+            mapInteractions.forEach(interaction => map.removeInteraction(interaction));
+        }
+
+        //add listener for a when a user finishes drawing a new 'dragbox'
+        drawRect.on('boxend', function(evt){
+            //draw rectangle highlighted onto map
+            plotRect(drawRect.getGeometry().getCoordinates(), shapeSource);
+        });
+
+        /*
+         * Listener for any single click anywhere on map. 
+         */
+        map.on('click', function(evt){
+            const closestFeat = shapeSource.getClosestFeatureToCoordinate(evt.coordinate);
+
+            //if the user clicked outside of a rectangle, unhighlight all other rectangles
+            if(prevClicked == selectButton && !closestFeat.getGeometry().intersectsCoordinate(evt.coordinate)){
+                unhighlightRects();
+            }
+        });
+
+        /*
+         * Listener for a single click. Slight delay because it waits to see if user wants a double click.
+         */
+        map.on('singleclick', function(evt){
+            const closestFeat = shapeSource.getClosestFeatureToCoordinate(evt.coordinate);
+
+            if(prevClicked == selectButton && closestFeat.getGeometry().intersectsCoordinate(evt.coordinate)){
+                clickedFeature(closestFeat);
+            }
+        });
+
+        /*
+         * Returns a label features associated feature that is selected by the user.
+         * feat: a feature (should be a label feature)
+         *
+         * Returns undefined if feat is not a label feature, else returns feature associated with the label feature
+         */
+        function getAssociatedFeat(feat){
+            for(var i = 0; i < shapeAndTextArray.length; i++){
+                if(feat == shapeAndTextArray[i][1]){
+                    return shapeAndTextArray[i][0];
+                }
+            }
+            return undefined;
+        }
+
+        /*
+         * Converts the r g and b values of feature and returns the same color in hexidecimal form.
+         * 
+         * Returns a string representation of a rgb color in the hexidecimal format #rrggbb
+         */
+        function rgbToHex(r, g, b) {
+            return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        }
+
+        /*
+         * Update the color and transparency of selected features.
+         */
+        function updateColTrans(){
+            select.getFeatures().forEach(currFeat => {
+                //Update values for selected features and their label features
+                shapeAndTextArray.forEach(shapeTextObj => {
+                    //if the current feature is not a label feature, update its transparency dynamically
+                    if(currFeat == shapeTextObj[0]){
+                        const rgbaVal = ol.color.asString(ol.color.asArray(document.querySelector('#colorSelect').value));
+                        const transSliderVal = document.querySelector('#transSlider').value;
+                        let transparency; 
+
+                        if(transSliderVal > 0){
+                            //add '.0' infront of val if greater than 90% transparency else add a '0.'
+                            transSliderVal > 90 ? transparency = "0.0" + (100 - transSliderVal) : transparency = "0." + (100 - transSliderVal);
+                        }else{
+                            transparency = "1";
+                        }                            
+                        currFeat.getStyle().getFill().setColor(rgbaVal.substring(0, rgbaVal.length - 2) + transparency + ")");
+                        currFeat.changed();
+                    }
+                });
+            });
+        }
+
+        /*
+         * Update the scale of selected features.
+         */
+        function updateScale(){
+            const currScale = Number(document.querySelector('#scaleSlider').value);
+
+            //update the scale of the selected feature AND it's label feature
+            select.getFeatures().forEach(currFeat => {
+                if(currScale > lastScale){
+                    for(var j = 0; j < (currScale - lastScale); j++){
+                        currFeat.getGeometry().scale(1.05);
+                    }
+                }else{
+                    for(var j = 0; j < (lastScale - currScale); j++){
+                        currFeat.getGeometry().scale(.95);
+                    }
+                }
+
+                //if the current feature is a label feature, update its coordinates to be at bottom of selected feature
+                const nonLabelFeat = getAssociatedFeat(currFeat);
+                if(nonLabelFeat != undefined){
+                    currFeat.setGeometry(new ol.geom.Polygon(getLabelFeatCoords(nonLabelFeat.getGeometry().getCoordinates()[0])));
+                }
+                currFeat.changed();
+            });
+
+            //update lastScale after all feature's scales have been updated
+            lastScale = currScale;
+        }
+
+        /*
+        * Update the rotation of the selected features.
+        */
+        function updateRotation(){
+            const currRadian = degToRad(document.querySelector('#rotationSlider').value);
+
+            select.getFeatures().forEach(currFeat => {
+                //find feature and its label pair
+                shapeAndTextArray.forEach(shapeTextObj => {
+                    //if the current feature is not a label feature, update its transparency dynamically
+                    if(currFeat == shapeTextObj[0]){
+                        //variable used to determine how much to adjust shapes rotation by
+                        let radChange;
+
+                        //if lastRadian is undefined, shape's rotation hasn't been altered yet
+                        lastRadian == undefined ? radChange = currRadian : radChange = currRadian - lastRadian;
+
+                        //roate current feature based on radian and center of current feature
+                        currFeat.getGeometry().rotate(radChange, ol.extent.getCenter(currFeat.getGeometry().getExtent()));
+
+                        //update label feature rotation (NOTE: probably needs to adjust to "bottom" of non-label feature)
+                        labelFeat = shapeTextObj[1];
+                        labelFeat.getGeometry().rotate(radChange, ol.extent.getCenter(currFeat.getGeometry().getExtent()));
+                        labelFeat.getStyle().getText().setRotation(degToRad(360 - document.querySelector('#rotationSlider').value));
+
+                        currFeat.changed();
+                        labelFeat.changed();
+                    }
+                });
+            });
+
+            //update lastRadian after updating rotation of all selected shapes
+            lastRadian = currRadian;
+        }
+
+        
+
+        /*
+         * Updates the label for all selected features.
+         */
+        function updateLabel(){
+            select.getFeatures().forEach(currFeat => {
+                shapeAndTextArray.forEach(shapeTextObj => {
+                    //if the current feature is not a label feature, update its transparency dynamically
+                    if(currFeat == shapeTextObj[0]){
+                        //get associated label feature
+                        labelFeat = shapeTextObj[1];
+                        labelFeat.getStyle().getText().setText(document.querySelector('#labelInput').value);
+                        labelFeat.changed();
+                    }
+                });
+            });
+        }
+
+        /*
+         * Convert an angle in degrees to radians.
+         *
+         * degrees: a int representing an angle in degrees
+         * Returns a double representing the parameter in radians
+         */
+        function degToRad(degrees){
+            return degrees * Math.PI / 180;
+        }
+
+        /*
+         * Deletes all features selected by the user.
+         */
+        function deleteFeats(){
+            select.getFeatures().forEach(feat => shapeSource.removeFeature(feat));
+            unhighlightRects();
+        }
+
+        /*
+         * Make all features appear to be unhighlighted and removes them from selected features.
+         */
+        function unhighlightRects(){
+            //make stroke transparent for all selected features
+            select.getFeatures().forEach(feat => {
+                feat.getStyle().getStroke().setColor('rgba(255, 255, 255, 0)');
+                feat.changed();
+            });
+
+            removeEditorButtons();
+
+            //unselect all features
+            select.getFeatures().clear();
+        }
+
+        /*
+         * Add document elements for feature editing and set values according to first selected feature's values.
+         */
+        function addEditorButtons(){
+            var edContents = document.querySelectorAll('.edContents');
+
+            //determine if more than one shape is selected; this determines values for document's elements
+            var selectedFeats = select.getFeatures();
+            setTimeout(function(){
+                //length of selectedFeats will be at least 2 if a feat is selected b/c feat and its label feat will have been selected
+                var feat = selectedFeats.item(0);
+                var featLabel = selectedFeats.item(1);
+                //update label field
+                document.querySelector('#labelInput').value = featLabel.getStyle().getText().getText();
+
+                //update transparency field
+                //split up rgba values to access transparency value
+                var featColorArray = feat.getStyle().getFill().getColor().split(",");
+                var transparency = featColorArray[featColorArray.length - 1].substring(0, featColorArray[featColorArray.length - 1].length - 1);
+                if(transparency < 1){
+                    document.querySelector('#transSlider').value = (100 - (transparency * 100));
+                    document.querySelector('#transVal').innerHTML = (100 - (transparency * 100)) + "%";
+                }else{
+                    document.querySelector('#transSlider').value = 0;
+                    document.querySelector('#transVal').innerHTML = "0%";
+                }
+
+                //update color field
+                document.querySelector('#colorSelect').value = rgbToHex(Number(featColorArray[0].substring(5, featColorArray[0].length)), Number(featColorArray[1]), Number(featColorArray[2]));
+                
+                //make buttons visible
+                edContents[0].style.display = 'block'; 
+            }, .01);
+        }
+
+        /*
+        * Remove document elements for feature editing and reset values.
+        */
+        function removeEditorButtons(){
+            var edContents = document.querySelectorAll('.edContents');
+            edContents[0].style.display = "none";
+
+            //reset values of document elements where needed
+            document.querySelector('#scaleSlider').value = 0;
+            document.querySelector('#rotationSlider').value = 0;
+            document.querySelector('#rotationVal').innerHTML = "0&deg;";
+
+            //reset global variables
+            lastRadian = undefined;  
+            lastScale = 0;           
+        }
+
+        /*
+         * Makes shapes clicked on appear highlighted.
+         * feat: the feature clicked on by the user
+         */
+        function clickedFeature(feat){
+            var labelFeat = getLabelFeature(feat);
+            
+            //add labelFeature of feat to selected shapes (use timeout because selected features is slightly delayed)
+            setTimeout(function(){
+                select.getFeatures().push(labelFeat);
+            }, .01);
+
+            //get the 2 features syle and make it look highlighted
+            var featStroke = feat.getStyle().getStroke();
+            featStroke.setWidth(3);
+            featStroke.setColor('rgb(28, 145, 255)');
+
+            //add features values into feature editor and make visible
+            addEditorButtons();
+
+            //update style so it appears changed immediatly
+            feat.changed();
+        }
+
+        /*
+         * Returns the transparent feature that will contain a label that corresponds to a different feature (currFeat).
+         * currFeat: a feature drawn by the user that the user can edit
+         */
+        function getLabelFeature(currFeat){
+            return shapeAndTextArray.find(feat => currFeat == feat[0])[1];
+        }
+
+        /*
+         * Dipslay a modal prompting user to enter a name for file to save.
+         */
+        function displaySaveModal(){
+            //make modal appear
+            $('#savePopup').modal("show");
+        }
+
+        /*
+         * Makes the modal prompting user to enter a name for file to save disappear.
+         */
+        function closeModal(){
+            //make modal disappear
+            $('#savePopup').modal("hide");
+        }
+
+
+        /* ------- Button listener's and their funcitons below ------- */
+        /* 
+         * Set the background color of the last clicked button to it's original color (ie. the border color).
+         * ele: the html button element that was just clicked by the user
+         */
+        function resetPrevClickedColor(ele){
+            if(ele !=  prevClicked){
+                prevClicked.style.backgroundColor = $(prevClicked).css('borderColor');
+            }
+        }
+
+        /*
+         * Set the background color of the clicked button to white.
+         */
+        function selectClicked(){
+            resetPrevClickedColor(this);
+            this.style.background = 'rgb(255, 255, 255)';
+            prevClicked = this; /* Set this html element to the most previously clicked button */
+
+            removeMapInteractions();
+            addInteraction('none');
+        }
+
+        function rectClicked(){
+            resetPrevClickedColor(this);
+
+            this.style.background = 'rgb(255,255,255)';
+            prevClicked = this;
+
+            removeMapInteractions();
+            addInteraction('rectangle');
+            unhighlightRects();
+        } 
+
+        const rectButton = document.querySelector('#rectangleButton');
+        const deleteButton = document.querySelector('#deleteButton');
+        const saveButton = document.querySelector('#saveButton');
+        const fileUploadButton = document.querySelector('#fileUpload');
+        const fileUploadLabel = document.querySelector('#fileUploadLabel')
+        const colorSelector = document.querySelector("#colorSelect");
+        const transSelector = document.querySelector('#transSlider');
+        const labelInput = document.querySelector('#labelInput');
+        const scaleSlider = document.querySelector('#scaleSlider');
+        const rotateSlider = document.querySelector('#rotationSlider');
+        const mapDiv = document.querySelector('.map');
+
+        selectButton.addEventListener('mousedown', selectClicked);
+        rectButton.addEventListener('mousedown', rectClicked);
+        deleteButton.addEventListener('click', deleteFeats);
+        saveButton.addEventListener('click', displaySaveModal);
+        fileUploadButton.addEventListener('change', readFile, false);
+
+        /* Alter buttons background when clicked on */
+        deleteButton.addEventListener('mousedown', () => deleteButton.style.background = 'rgb(255,200,200)');
+        deleteButton.addEventListener('mouseup', () => deleteButton.style.backgroundColor = $(deleteButton).css('borderColor'));
+        saveButton.addEventListener('mousedown', () => saveButton.style.background = 'rgb(184, 220, 243)');
+        saveButton.addEventListener('mouseup', () => saveButton.style.backgroundColor = $(saveButton).css('borderColor'));
+        fileUploadLabel.addEventListener('mousedown', () => fileUploadLabel.style.background = 'rgb(255, 216, 169)');
+        fileUploadLabel.addEventListener('mouseup', () => fileUploadLabel.style.backgroundColor = $(fileUploadLabel).css('borderColor'));
+
+        colorSelector.addEventListener('input', updateColTrans);
+        labelInput.addEventListener('input', updateLabel);
+        scaleSlider.addEventListener('input', updateScale);
+
+        rotateSlider.addEventListener('input', () => {
+            document.querySelector('#rotationVal').innerHTML = rotateSlider.value + "&deg;";
+            updateRotation();
+        });  
+        transSelector.addEventListener('input', () => {
+            document.querySelector('#transVal').innerHTML = transSelector.value + "%";
+            updateColTrans();
+        });
+
+        mapDiv.addEventListener('mouseenter', () => prevClicked == rectButton ? mapDiv.style.cursor = 'crosshair': mapDiv.style.cursor = 'default');
+    </script>
+</body>
+</html>
