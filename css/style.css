@@ -1,0 +1,126 @@
+#title{
+    text-align: center;
+    font-size: 40px;
+    font-weight: bolder;
+    font-family: Helvetica;
+}
+
+.map{
+    float: left;
+    height: 84%;
+    width: 74%;
+    padding: 4px;
+    cursor: default;
+}
+
+.editor{
+    display: inline-block;
+    width: 24%;
+    height: 84%;
+    border: 2px solid grey;
+    padding: 3px;
+    background: rgba(128, 128, 128, 0.26);
+}
+.editor .edContents{
+    display:none;
+    font-family:Arial;
+}
+
+#transSlider{
+    width: 45%;
+}
+
+.no-border{
+    border: 0;
+    box-shadow: none;
+}
+
+/* Start Map Button Tools */
+#buttons{
+    float:left;
+}
+#editButton{
+    display:inline-block;
+}
+
+#selectButton{
+    background-color: rgb(255, 255, 255);
+    color: white;
+    padding: 8px 25px;
+    text-align: center;
+    display:inline-block;
+    font-size: 16px;
+    cursor:pointer;
+    border: 3px solid rgb(76, 175, 80);
+    border-radius: 8px;
+}
+#rectangleButton{
+    background-color: rgb(76, 175, 80);
+    color: white;
+    padding: 8px 15px;
+    text-align: center;
+    display:inline-block;
+    font-size: 16px;
+    cursor:pointer;
+    border: 3px solid rgb(76, 175, 80);
+    border-radius: 8px;
+}
+#deleteButton{
+    background-color: rgb(241, 48, 48);
+    color: white;
+    padding: 8px 15px;
+    text-align: center;
+    display:inline-block;
+    font-size: 16px;
+    cursor:pointer;
+    border: 3px solid rgb(241, 48, 48);
+    border-color: rgb(241, 48, 48);
+    border-radius: 8px;
+}
+#saveButton{
+    background-color: rgb(52, 162, 235);
+    color: white;
+    padding: 8px 25px;
+    text-align: center;
+    display:inline-block;
+    font-size: 16px;
+    cursor:pointer;
+    border: 3px solid rgb(52, 162, 235);
+    border-radius: 8px;
+}
+label {
+    cursor: pointer;
+    background-color: rgb(255, 140, 0);
+    padding: 8px 15px;
+    display:inline-block;
+    border: 3px solid rgb(255, 140, 0);
+    border-radius: 8px;
+}
+#fileUpload{
+    opacity: 0;
+    position: absolute;
+    z-index: -1;
+}
+/* End Map Button Tools CSS */
+
+#downloadLink{
+    font-family: Arial;
+    text-align: center;
+    display:inline-block;
+    padding: 0px 5px;
+}
+
+#saveFormDiv{
+    margin: center;
+    text-align: center;
+    width: 30%;
+}
+
+#saveFormDiv .form-control{
+    display: inline-block;
+    width: 85%;
+}
+
+input[type=text]:focus {
+    border: 1.5px solid #555;
+}

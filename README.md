@@ -1,1 +1,2 @@
 # Map-Editor
+This project initially started as an attempt to map the changing positions of Confederate and Union troops approaching Gettysburg in June, 1863. However it evolved into creating a map editor that would allow users to tell stories, based upon geographic positions.
